@@ -77,6 +77,18 @@ void print_hdr_eth(uint8_t *buf) {
   fprintf(stderr, "\ttype: %d\n", ntohs(ehdr->ether_type));
 }
 
+
+int mac_comp(uint8_t* a, uint8_t* b) {
+	int i=0;
+	for (i=0; i<6; i++) {
+		if (a[i] != b[i]) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
 /* Prints out fields in IP header. */
 void print_hdr_ip(uint8_t *buf) {
   sr_ip_hdr_t *iphdr = (sr_ip_hdr_t *)(buf);

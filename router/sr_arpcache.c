@@ -11,37 +11,84 @@
 #include "sr_if.h"
 #include "sr_protocol.h"
 
-/* 
+
+
+void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
+	 time_t now = time(NULL);
+	 if (req->times_sent >= 5) {
+
+		/* send icmp host unreachable to source addr of all pkts waiting on this request
+		arpreq_destroy(req) */
+		sr_arpreq_destroy(&(sr->cache), req);
+	 }
+	 else {
+		/* send arp request */
+		req->sent = now;
+		req->times_sent++;
+
+		sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*) req;
+		unsigned char* ar_sha = (unsigned char*) arp_header->ar_sha;
+		unsigned char* ar_tha = (unsigned char*) arp_header->ar_tha;
+		uint32_t target_IP = arp_header->ar_tip;
+		uint32_t source_IP = arp_header->ar_sip;
+
+		/* lookup IP in cache first */
+		struct sr_arpentry* entry = sr_arpcache_lookup(&(sr->cache), target_IP);
+		if (entry != NULL) {
+			/* if entry for IP is present, immediately send response with TIP back to SIP. */
+			printf("IP found in cache! responding immediately and destroying request\n");
+
+			/* destroy ARP request after fulfillment */
+			sr_arpreq_destroy(&(sr->cache), req);
+			return;
+		}
+
+		/* if entry is not present, forward ARP request to all other ethernet interfaces (except
+		 * source ethernet interface), every 1 second. */
+		printf("IP not found in cache, forwarding request... \n");
+		if (difftime(now, req->sent) > 1.0) {
+			struct sr_if* iface = sr->if_list;
+
+			while (iface != 0) {
+				if (!mac_comp(iface->addr, ar_sha)) {
+
+					/* if ethernet interface is not the same as the source ethernet interface, then
+					 * forward the frame to that interface.*/
+					printf("forwarding arp req to ");
+					sr_print_if(iface);
+				}
+
+				iface = iface->next;
+			}
+
+		}
+
+	}
+}
+
+
+/*
   This function gets called every second. For each request sent out, we keep
   checking whether we should resend an request or destroy the arp request.
   See the comments in the header file for an idea of what it should look like.
 */
-void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
+void sr_arpcache_sweepreqs(struct sr_instance *sr) {
     /* Fill this in */
 
+	struct sr_arpreq* reqs = sr->cache.requests;
 
-}
+	while (reqs != 0) {
+		struct sr_arpreq* next_req = reqs->next;
 
-
-void handle_arpreq(struct sr_arpreq *req) {
-	time_t now = time(NULL);
-
-	if (difftime(now, req->sent) > 1.0) {
-         if (req->times_sent >= 5) {
-
-        	 // send icmp host unreachable to source addr of all pkts waiting on this request
-        	 // arpreq_destroy(req)
-        	 sr_arpreq_destroy(req->cache, struct sr_arpreq *entry);
-         }
-         else {
-
-             //send arp request
-             req->sent = now;
-             req->times_sent++;
-         }
-
+		handle_arpreq(sr, reqs);
+		reqs = next_req;
 	}
+
+
+
+
 }
+
 
 /* You should not need to touch the rest of this code. */
 
