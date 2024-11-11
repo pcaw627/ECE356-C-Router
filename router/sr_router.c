@@ -73,6 +73,10 @@ void handleARPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, u
 
 	sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*) (packet+sizeof(sr_ethernet_hdr_t));
 
+	/*TODO: determine if destined to us or not*/
+	/*TODO: determine if response or request */
+	/*TODO: change this to work for all 4 cases based on the two specified above*/
+
 
 	unsigned short hw_addr = arp_header->ar_hrd;
 	uint32_t target_IP = arp_header->ar_tip;
@@ -137,18 +141,35 @@ void handleARPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, u
 	/* TODO: we send ARP requests and responses, we handle requests, but we don't yet handle ARP responses.  */
 }
 
-void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, uint8_t len) {
+void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, unsigned int len) {
 
-	sr_print_routing_table(sr);
+	/*sr_print_routing_table(sr);*/
+
+
+	/* check if mimimum packet size satisfied */
+	if (len < 21) {
+		printf("Not a valid IP packet size (too small)");
+		/* TODO: send ICMP error message? */
+	}
 
 	/* calc checksum for IP packet, compare to the checksum included. */
 	struct sr_if* iface = sr->if_list;
 	sr_ip_hdr_t* ipheader = (sr_ip_hdr_t*) (packet+14);
-	int actual_cksum = cksum(packet+14, len-14);
 
+
+
+	int i = 0;
+	for (i = 0; i < 20; i++) {
+		printf("%02x ", packet[14+i]);
+	}
+	printf("\n");
+
+	int actual_cksum = cksum(packet+14, 20);
 
 	if (actual_cksum != ipheader->ip_sum) {
-		printf("failed: checksum invalid");
+		printf("failed: checksum invalid ");
+		printf("%d %d\n",actual_cksum, ipheader->ip_sum);
+		/*TODO: send ICMP error message?*/
 		return;
 	}
 	ipheader->ip_ttl -= 1;
@@ -185,9 +206,32 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, ui
 
 		/* iterate through all entries in routing table and forward packet to matching IP */
 		while (rt != 0) {
-			/* fix type error here. */
-			if (rt->dest->s_addr == destIP) {
-				/* TODO: forward packet to destIP */
+			if (rt->dest.s_addr == (in_addr_t)destIP) {
+				/* If we found a match, forward the packet along that interface */
+
+
+				/* Check if MAC address of next-hop IP is in our cache,
+				 * if it is we alter the dest eth addr and send
+				 * if not, add this to the arp req queue and move on with our lives*/
+
+				struct sr_arpentry * entry = sr_arpcache_lookup(&(sr->cache),rt->dest.s_addr);
+
+				if (entry == 0) {
+					/* if we didn't find it, make like a tree and leave */
+					/*appending to queue, arpcache will handle changing the dest MAC addr*/
+					sr_arpcache_queuereq(&(sr->cache),rt->dest.s_addr, packet, len, rt->interface);
+					return;
+				}
+
+				/* if it is in the arp cache, then update dest MAC and forward*/
+				/* TODO: may also need to update source MAC addr to be interface MAC, idk if its that or original src*/
+				sr_ethernet_hdr_t* eth_header = (sr_ethernet_hdr_t*)packet;
+				memcpy(eth_header->ether_dhost,entry->mac,ETHER_ADDR_LEN);
+
+				/* once packet is properly changed, send it */
+				sr_send_packet(sr, packet, len, rt->interface);
+
+
 
 				return;
 			}
