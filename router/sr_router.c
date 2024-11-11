@@ -85,7 +85,7 @@ void handleARPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, u
 	while (iface != 0) {
 		if (iface->ip == target_IP) {
 			/* send response for ARP request */
-			printf("ARP request reached destination");
+			printf("ARP request reached destination\n");
 
 			uint8_t* buffer = malloc(sizeof(sr_arp_hdr_t)+sizeof(sr_ethernet_hdr_t));
 			unsigned char* src_addr = iface->addr;
@@ -134,59 +134,74 @@ void handleARPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, u
 
 	/* if NOT in ARP cache, then we want to forward the ARP request to all the other interfaces (except for source). */
 
-	/* */
+	/* TODO: we send ARP requests and responses, we handle requests, but we don't yet handle ARP responses.  */
 }
 
-void handleIPpacket(uint8_t* packet) {
-	/* calc checksum for IP packet, compare to the checksum included.
+void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, uint8_t len) {
 
+	sr_print_routing_table(sr);
+
+	/* calc checksum for IP packet, compare to the checksum included. */
 	struct sr_if* iface = sr->if_list;
+	sr_ip_hdr_t* ipheader = (sr_ip_hdr_t*) (packet+14);
+	int actual_cksum = cksum(packet+14, len-14);
 
 
+	if (actual_cksum != ipheader->ip_sum) {
+		printf("failed: checksum invalid");
+		return;
+	}
+	ipheader->ip_ttl -= 1;
+	ipheader->ip_sum = cksum(packet+14, len-14);
+	uint32_t destIP = ipheader->ip_dst;
+	uint32_t srcIP = ipheader->ip_src;
+
+
+	/* check if any of ethernet interfaces are the destination IP */
 	int forwarding = 1;
 
-
 	while (iface != 0) {
-
 		uint32_t eth_ip = iface->ip;
 		print_addr_ip_int(eth_ip);
-		printf("eth type %x \n", ethtype);
 
-		if(dest_IP == eth_ip) {
+		if(destIP == eth_ip) {
 			forwarding = 0;
 
 			printf("packet destined for this ethernet interface address: %s, handling packet: ",iface->addr);
 
-			/* if destination is for this ethernet interface's IP, then handle packet here
-
-
-
+			/* if destination is for this ethernet interface's IP, then handle packet here */
+			return;
 		}
 
 		iface = iface->next;
 	}
 
+	/* if forwarding, check routing table (verbatim for now, prefix search later) */
 	if (forwarding) {
-		/* otherwise forward the packet to all other interfaces
-		struct sr_if* other_iface = sr->if_list;
 
-		while (other_iface != 0) {
-			/* if eth IP is the same as src_IP, then continue loop
-			if (other_iface->ip == src_IP) {
-				continue;
+		/* otherwise forward the packet to all other interfaces*/
+		struct sr_if* other_iface = sr->if_list;
+		struct sr_rt* rt = sr->routing_table;
+
+		/* iterate through all entries in routing table and forward packet to matching IP */
+		while (rt != 0) {
+			/* fix type error here. */
+			if (rt->dest->s_addr == destIP) {
+				/* TODO: forward packet to destIP */
+
+				return;
 			}
 
-			/* forward packet */
-	/*printf("forwarding packet to %02X \n", print_addr_ip_int(other_iface->ip));
-			print_addr_ip_int(other_iface->ip);
-			print_addr_ip_int(src_IP);
-			printf("\n");
-
-			other_iface = other_iface->next;
+			rt = rt->next;
 		}
 
+		/* TODO: in event of no IP match in routing table, forward IP packet to all interfaces except for source interface. */
 
-	} */
+
+
+
+	}
+
 	return;
 }
 
@@ -202,12 +217,12 @@ void sr_handlepacket(struct sr_instance* sr,
 
 	printf("*** -> Received packet of length %d \n",len);
 
-	print_hdrs(packet, len);
+	/*print_hdrs(packet, len);*/
 
 	/* fill in code here */
 	/* validate packet: valid checksum, length, and check address */
 	if (len < sizeof(sr_ethernet_hdr_t)) {
-		printf("length less than length of packet header; malformed packet.");
+		printf("length less than length of packet header; malformed packet.\n");
 		return;
 	}
 
@@ -237,10 +252,11 @@ void sr_handlepacket(struct sr_instance* sr,
 
 	} else if (ethertype(packet) == ethertype_ip) {
 		/* IP handling */
-		print_addr_ip_int(dest_IP);
-		print_addr_ip_int(src_IP);
+		printf("Calling handleIPpacket()\n");
+		/*print_addr_ip_int(dest_IP);
+		print_addr_ip_int(src_IP);*/
 
-		handleIPpacket(packet);
+		handleIPpacket(sr, interface, packet, len);
 
 	} else {
 		printf("invalid request type\n");
