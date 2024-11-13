@@ -22,11 +22,10 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 			/* send icmp host unreachable to source addr of all pkts waiting on this request
 		arpreq_destroy(req) */
 			sr_arpreq_destroy(&(sr->cache), req);
+			return;
 		}
 		else {
 			/* send arp request */
-			req->sent = now;
-			req->times_sent++;
 
 			uint32_t target_IP = req->ip;
 			struct sr_arpentry* entry = sr_arpcache_lookup(&(sr->cache), target_IP);
@@ -37,8 +36,10 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 
 				/* iterate through all packets waiting on this request, and forwarding each packet the cached IP. */
 
+
 				/* destroy ARP request after fulfillment */
 				sr_arpreq_destroy(&(sr->cache), req);
+
 				return;
 			}
 
@@ -47,7 +48,9 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 			printf("IP not found in cache, generating new ARP request... \n");
 			struct sr_if* router_ifaces = sr->if_list;
 
-			while (router_ifaces != 0) {
+			while (router_ifaces != NULL) {
+
+				/*if(router_ifaces->ip == sr->)*/
 
 				uint8_t* buffer = malloc(sizeof(sr_arp_hdr_t)+sizeof(sr_ethernet_hdr_t));
 				unsigned char* src_addr = router_ifaces->addr;
@@ -73,15 +76,20 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 				arpheader->ar_sip = router_ifaces->ip;
 				arpheader->ar_tip = req->ip;
 
-				printf("buffer: ");
+				/*printf("buffer: ");
 				int i=0;
 				for (i=0; i<sizeof(sr_ethernet_hdr_t)+sizeof(sr_arp_hdr_t); i++) {
 					printf("%02x ", buffer[i]);
 				}
-				printf("\n");
+				printf("\n");*/
+
+				/*print_hdr_arp(buffer+14);*/
 
 				sr_send_packet(sr, buffer, sizeof(sr_ethernet_hdr_t)+sizeof(sr_arp_hdr_t), router_ifaces->name);
 
+				req->sent = now;
+				req->times_sent++;
+				printf("%d times sent\n", req->times_sent);
 
 				router_ifaces = router_ifaces->next;
 
@@ -104,10 +112,11 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
 
 	struct sr_arpreq* reqs = sr->cache.requests;
 
-	while (reqs != 0) {
+	while (reqs != NULL) {
 		struct sr_arpreq* next_req = reqs->next;
 
 		handle_arpreq(sr, reqs);
+		sr_arpreq_destroy(&(sr->cache), reqs);
 		reqs = next_req;
 	}
 }
