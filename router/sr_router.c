@@ -199,7 +199,7 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 	uint16_t sent_cksum = ipheader->ip_sum;
 	uint16_t clear_sum = 0x00;
 	memcpy(&(ipheader->ip_sum), &clear_sum, sizeof(uint16_t)); /*clear out the cksum field before calcing it*/
-	int actual_cksum = cksum(packet+14, 20);
+	int actual_cksum = cksum(packet+14, sizeof(sr_ip_hdr_t));
 	if (actual_cksum != sent_cksum) {
 		printf("failed: checksum invalid ");
 		printf("%d %d\n",actual_cksum, sent_cksum);
@@ -217,13 +217,13 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 	}
 
 	ipheader->ip_ttl = ipheader->ip_ttl-1;
-	uint16_t new_cksum = cksum(packet+14, len-14);
+	uint16_t new_cksum = cksum(packet+14, sizeof(sr_ip_hdr_t));
 	ipheader->ip_sum = 0;
 	memcpy(&(ipheader->ip_sum),&(new_cksum),2);
 
 	/* check if any of ethernet interfaces have the destination IP */
-	fprintf(stderr, "Checking if packet destined to us, destIP = ");
-	print_addr_ip_int(ntohl(destIP));
+	/*fprintf(stderr, "Checking if packet destined to us, destIP = ");
+	print_addr_ip_int(ntohl(destIP));*/
 
 	while (iface != NULL) {
 		uint32_t iface_ip = iface->ip;

@@ -110,6 +110,11 @@ struct sr_arpcache {
    You must free the returned structure if it is not NULL. */
 struct sr_arpentry *sr_arpcache_lookup(struct sr_arpcache *cache, uint32_t ip);
 
+void sr_arpcache_sweepreqs(struct sr_instance *sr);
+void send_ICMP_message(struct sr_instance *sr, const char* iface, uint8_t* inbound_packet,
+		uint32_t inbound_packet_len, uint32_t destIP, uint8_t* destMAC, uint8_t type, uint8_t code);
+
+
 /* Adds an ARP request to the ARP request queue. If the request is already on
    the queue, adds the packet to the linked list of packets for this sr_arpreq
    that corresponds to this ARP request. The packet argument should not be
@@ -146,7 +151,5 @@ void sr_arpcache_dump(struct sr_arpcache *cache);
 int   sr_arpcache_init(struct sr_arpcache *cache);
 int   sr_arpcache_destroy(struct sr_arpcache *cache);
 void *sr_arpcache_timeout(void *cache_ptr);
-
-void sr_arpcache_sweepreqs(struct sr_instance *sr);
 
 #endif
