@@ -97,7 +97,7 @@ void handleARPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, u
 	unsigned short hw_addr = arp_header->ar_hrd;
 	uint32_t target_IP = arp_header->ar_tip;
 	/*printf("____target IP: %d\n", target_IP);*/
-	fprintf(stderr, "____target IP: %d\n");
+	fprintf(stderr, "____target IP: \t");
 	print_addr_ip_int(ntohl(target_IP));
 
 
@@ -208,6 +208,14 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 	}
 	/*printf("success: checksum valid ");
 	printf("%d %d\n",actual_cksum, sent_cksum);*/
+	sr_ethernet_hdr_t* eth_hdr = (sr_ethernet_hdr_t*)packet;
+
+	if (ipheader->ip_ttl <= 1) {
+		/*send ICMP TTL exceeded*/
+
+		memcpy(&(ipheader->ip_sum), &sent_cksum, sizeof(uint16_t)); /*clear out the cksum field before calcing it*/
+		send_ICMP_message(sr, interface, packet, len, srcIP, eth_hdr->ether_shost,11,0);
+	}
 
 	ipheader->ip_ttl = ipheader->ip_ttl-1;
 	uint16_t new_cksum = cksum(packet+14, len-14);
@@ -229,10 +237,15 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 
 			printf("packet destined for this interface: %s, handling packet: ",iface->name);
 
-			/* TODO:handle packet (aka do ICMP ping / traceroute, any TCP/UDP should be met with ICMP port unreachable sent back*/
-			/* NO FORWARDING / QUEUEING	IN THIS SECTION. ONLY SEND A REPLY ON THE MAC ADDR WE GOT IT FROM
-			 * CAN ADD IT TO ARPCACHE IF WE WANT
-			 * THIS METHOD WILL END WITH SR_SEND_PACKET() FOLLOWED BY return;*/
+			uint8_t ip_type = ipheader->ip_p;
+			sr_icmp_hdr_t* ICMP_header = (sr_icmp_hdr_t*)(packet+sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+
+			if (ip_type == ip_protocol_icmp && ICMP_header->icmp_type == 8) {
+				/*check if type 8 ICMP, if so, send a type 0 ICMP echo reply*/
+				send_ICMP_message(sr, interface, packet, len, srcIP, eth_hdr->ether_shost,0,0);
+				return;
+			}
+			/*TODO: if not type 8 ICMP packet, reply with ICMP port unreachable*/
 			return;
 		}
 		if (destIP == ntohl(iface_ip)) {
