@@ -21,9 +21,12 @@ void send_ICMP_message(struct sr_instance *sr, const char* iface, uint8_t* inbou
 	printf("SENDING ICMP MESSAGE ---------------------------------------------------\n");
 	sr_ip_hdr_t* incoming_ip_hdr = (sr_ip_hdr_t*)(inbound_packet + 14);
 
-	uint32_t icmp_len = sizeof(sr_icmp_hdr_t);
+	uint32_t icmp_len = sizeof(sr_icmp_hdr_t)+4;
 	if (type == 3) {
 		icmp_len = sizeof(sr_icmp_t3_hdr_t);
+	}
+	if (type == 0) {
+		icmp_len = 64;
 	}
 	uint32_t len = icmp_len + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t);
 	uint8_t* buf = (uint8_t*)malloc(len); /*make out response buffer with proper length*/
@@ -48,13 +51,16 @@ void send_ICMP_message(struct sr_instance *sr, const char* iface, uint8_t* inbou
 	ip_hdr->ip_v = 4;
 	ip_hdr->ip_tos = 0;
 	ip_hdr->ip_len = htons(icmp_len + 20);
-	ip_hdr->ip_id = htons(incoming_ip_hdr->ip_id)+1;
+	ip_hdr->ip_id = htons(incoming_ip_hdr->ip_id);
 	ip_hdr->ip_off = htons(IP_DF);
 	ip_hdr->ip_ttl = 64;
 	ip_hdr->ip_p = ip_protocol_icmp;
 	ip_hdr->ip_sum = 0;
 	ip_hdr->ip_src = icmp_iface->ip;
 	ip_hdr->ip_dst = incoming_ip_hdr->ip_src;
+	if (type == 0) {
+		ip_hdr->ip_src = incoming_ip_hdr->ip_dst;
+	}
 
 	/*recalc ipv4 cksum*/
 	int ip_cksum = cksum(ip_hdr, 20);
@@ -67,30 +73,33 @@ void send_ICMP_message(struct sr_instance *sr, const char* iface, uint8_t* inbou
 	*(icmp_buf) = type;
 	*(icmp_buf+1) = code;
 	int i = 0;
-	for (i = 2; i <4; i++) { /*zero cksum and 4 padding header bytes*/
+	for (i = 2; i <8; i++) { /*zero cksum and 4 padding header bytes*/
 		icmp_buf[i] = 0;
 	}
-	if (type == 3) {
-		for (i = 4; i <8; i++) { /*zero cksum and 4 padding header bytes*/
-			icmp_buf[i] = 0;
-		}
-	}
+	/*4-5, 6-7*/
+	*(uint16_t*)(icmp_buf+4) = *(uint16_t*)(inbound_packet+ 14 + 20 + 4);
+	*(uint16_t*)(icmp_buf+6) = *(uint16_t*)(inbound_packet+ 14 + 20 + 6);
+
+
 	/*copy the buffer from ipv4 packet into ICMP data*/
 	if (type == 3) {
 		uint8_t* icmp_data = icmp_buf + 8;
 		memcpy(icmp_data, (inbound_packet+sizeof(sr_ethernet_hdr_t)), icmp_len - 8); /*copies the IPv4 header + first 8 bytes of data*/
 
 	}
-
+	if (type == 0) {
+		memcpy(icmp_buf+8,(inbound_packet+42),56); /*copy timestamp and random data to outbound packet*/
+	}
 	/*calculate the correct checksum and send packet away*/
 	uint16_t icmp_cksum = cksum(icmp_buf, icmp_len);
+	/*printf("\n||| ICMP cksum and icmp_len: %hu, %d\n\n", icmp_cksum, icmp_len);*/
 	memcpy((icmp_buf+2),&(icmp_cksum),2);
 
 	/*send the full ethernet frame*/
-	for(i = 0; i < len; i++) {
+	/*for(i = 0; i < len; i++) {
 		printf("%02x ",buf[i]);
 	}
-	printf("\n");
+	printf("\n");*/
 	sr_send_packet(sr, buf, len, iface);
 	return;
 }
