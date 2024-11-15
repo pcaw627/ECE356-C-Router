@@ -212,7 +212,6 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 
 	if (ipheader->ip_ttl <= 1) {
 		/*send ICMP TTL exceeded*/
-
 		memcpy(&(ipheader->ip_sum), &sent_cksum, sizeof(uint16_t)); /*clear out the cksum field before calcing it*/
 		send_ICMP_message(sr, interface, packet, len, srcIP, eth_hdr->ether_shost,11,0);
 	}
@@ -222,16 +221,12 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 	ipheader->ip_sum = 0;
 	memcpy(&(ipheader->ip_sum),&(new_cksum),2);
 
-
-
 	/* check if any of ethernet interfaces have the destination IP */
 	fprintf(stderr, "Checking if packet destined to us, destIP = ");
 	print_addr_ip_int(ntohl(destIP));
 
 	while (iface != NULL) {
-		/*printf("looping ifaces\n");*/
 		uint32_t iface_ip = iface->ip;
-		/*print_addr_ip_int(ntohl(iface_ip));*/
 
 		if(destIP == iface_ip) {
 
@@ -246,6 +241,7 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 				return;
 			}
 			/*TODO: if not type 8 ICMP packet, reply with ICMP port unreachable*/
+			send_ICMP_message(sr, interface, packet, len, srcIP, eth_hdr->ether_shost,3,3);
 			return;
 		}
 		if (destIP == ntohl(iface_ip)) {
@@ -299,11 +295,13 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 		}
 		rt = rt->next;
 	}
+	printf("Miss in routing table\n");
 
+	send_ICMP_message(sr, interface, packet, len, srcIP, eth_hdr->ether_shost,3,0);
 
-
-	iface = sr->if_list;
 	/* in event of no IP match in routing table, forward IP packet to all interfaces except for source interface. */
+	/*
+	iface = sr->if_list;
 	while (iface != 0) {
 		if (iface->ip == srcIP) {
 			iface = iface->next;
@@ -313,9 +311,7 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 
 		sr_send_packet(sr, packet, len, rt->interface);
 		iface = iface->next;
-	}
-
-
+	}*/
 	return;
 }
 

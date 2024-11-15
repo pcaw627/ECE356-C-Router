@@ -11,8 +11,8 @@
 #include "sr_if.h"
 #include "sr_protocol.h"
 #include "sr_utils.h"
+#include "sr_rt.h"
 
-/*TODO: when passing inbound_packet, ensure it is only the IP section and that Len is only the len of Ip section*/
 void send_ICMP_message(struct sr_instance *sr, const char* iface, uint8_t* inbound_packet,
 						uint32_t inbound_packet_len, uint32_t destIP, uint8_t* destMAC, uint8_t type, uint8_t code)
 {
@@ -142,11 +142,33 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 
 		return;
 	}
-
+	/*entry was null, resending ARP req*/
 	if (difftime(now, req->sent) > 1.0) {
 		if (req->times_sent >= 5) {
 			printf("DESTROYING ARP REQ B/C TIMEOUT\n");
-			/* send icmp host unreachable to source addr of all pkts waiting on this request*/
+
+			struct sr_packet* packet = req->packets;
+			/*send icmp host unreachable to all packets waiting on this req*/
+			while (packet) {
+				uint8_t* buff = packet->buf;
+				sr_ethernet_hdr_t* eth_hdr = (sr_ethernet_hdr_t*)buff;
+				sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(buff + sizeof(sr_ethernet_hdr_t));
+
+				struct sr_rt* rt = sr->routing_table;
+				char* iface = rt->interface;
+				while (rt) {
+					iface = rt->interface;
+					if (rt->dest.s_addr == (in_addr_t)(ip_hdr->ip_src)) { /*we've found the iface this came from*/
+						break;
+					}
+					rt = rt->next;
+				}
+
+				send_ICMP_message(sr, iface, packet->buf, packet->len, ip_hdr->ip_src, eth_hdr->ether_shost,3,1);
+				packet = packet->next;
+			}
+
+			/* TODO: send icmp host unreachable to source addr of all pkts waiting on this request*/
 			sr_arpreq_destroy(&(sr->cache), req);
 			return;
 		}
