@@ -16,6 +16,42 @@
 
 void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 	time_t now = time(NULL);
+	uint32_t target_IP = req->ip;
+	/*struct sr_arpentry* entry = sr_arpcache_lookup(&(sr->cache), target_IP);*/
+	struct sr_arpentry* entry = sr_arpcache_lookup(&(sr->cache), htonl(target_IP));
+
+	/* lookup IP in cache first */
+	if (entry != NULL) {
+		/* if entry for IP is present, immediately send response with TIP back to SIP. */
+		fprintf(stderr,"\nForwarding all packets waiting on this ARP request: \t");
+		print_addr_ip_int(target_IP);
+
+		/* TODO: iterate through all packets waiting on this request, and forward each packet to cached IP. */
+		struct sr_packet* packet = req->packets;
+
+		while (packet != NULL) {
+
+			sr_ethernet_hdr_t* eth_header = (sr_ethernet_hdr_t*)(packet->buf);
+			memcpy(eth_header->ether_dhost,entry->mac,ETHER_ADDR_LEN);
+			/*Finding MAC of that interface*/
+			struct sr_if* ifaceList = sr->if_list;
+			while (ifaceList != NULL) {
+				if (strcmp(ifaceList->name,packet->iface)==0) {
+					memcpy(eth_header->ether_shost,ifaceList->addr,ETHER_ADDR_LEN);
+				}
+				ifaceList = ifaceList->next;
+			}
+			sr_send_packet(sr, packet->buf, packet->len, packet->iface);
+			packet = packet->next;
+		}
+
+
+		/* destroy ARP request after fulfillment */
+		sr_arpreq_destroy(&(sr->cache), req);
+
+		return;
+	}
+
 	if (difftime(now, req->sent) > 1.0) {
 		if (req->times_sent >= 5) {
 			printf("DESTROYING ARP REQ B/C TIMEOUT\n");
@@ -28,41 +64,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 			req->sent = now;
 			req->times_sent++;
 
-			uint32_t target_IP = req->ip;
-			/*struct sr_arpentry* entry = sr_arpcache_lookup(&(sr->cache), target_IP);*/
-			struct sr_arpentry* entry = sr_arpcache_lookup(&(sr->cache), htonl(target_IP));
 
-			/* lookup IP in cache first */
-			if (entry != NULL) {
-				/* if entry for IP is present, immediately send response with TIP back to SIP. */
-				fprintf(stderr,"\nForwarding all packets waiting on this ARP request: \t");
-				print_addr_ip_int(target_IP);
-
-				/* TODO: iterate through all packets waiting on this request, and forward each packet to cached IP. */
-				struct sr_packet* packet = req->packets;
-
-				while (packet != NULL) {
-
-					sr_ethernet_hdr_t* eth_header = (sr_ethernet_hdr_t*)(packet->buf);
-					memcpy(eth_header->ether_dhost,entry->mac,ETHER_ADDR_LEN);
-					/*Finding MAC of that interface*/
-					struct sr_if* ifaceList = sr->if_list;
-					while (ifaceList != NULL) {
-						if (strcmp(ifaceList->name,packet->iface)==0) {
-							memcpy(eth_header->ether_shost,ifaceList->addr,ETHER_ADDR_LEN);
-						}
-						ifaceList = ifaceList->next;
-					}
-					sr_send_packet(sr, packet->buf, packet->len, packet->iface);
-					packet = packet->next;
-				}
-
-
-				/* destroy ARP request after fulfillment */
-				sr_arpreq_destroy(&(sr->cache), req);
-
-				return;
-			}
 
 			/* cache miss: if entry is not present, send ARP request for target IP to all other ethernet interfaces (except
 			 * source ethernet interface), every 1 second. */
