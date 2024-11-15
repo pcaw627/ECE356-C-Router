@@ -81,13 +81,13 @@ void handleARPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, u
 
 	unsigned short arpOp = ntohs(arp_header->ar_op);
 
-	printf(">>---ARP optype (endianned): %hu <--- :)\n", arpOp);
+	/*printf(">>---ARP optype (endianned): %hu <--- :)\n", arpOp);*/
 
 	/*if it's a response, we add it to the cache and return*/
 	if (arpOp == arp_op_reply) {
 		sr_arpcache_insert(&(sr->cache), arp_header->ar_sha, ntohl(arp_header->ar_sip));
 		sr_arpcache_sweepreqs(sr); /*sweeping for good measure*/
-		printf("Caching ARP reply\n");
+		/*printf("Caching ARP reply\n");*/
 		return;
 	} /*end of ARP reply handling*/
 
@@ -97,8 +97,8 @@ void handleARPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, u
 	unsigned short hw_addr = arp_header->ar_hrd;
 	uint32_t target_IP = arp_header->ar_tip;
 	/*printf("____target IP: %d\n", target_IP);*/
-	fprintf(stderr, "____target IP: \t");
-	print_addr_ip_int(ntohl(target_IP));
+	/*fprintf(stderr, "____target IP: \t");
+	print_addr_ip_int(ntohl(target_IP));*/
 
 
 	struct sr_if* iface = sr->if_list;
@@ -255,46 +255,46 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 	/* if forwarding, check routing table (verbatim for now, prefix search later) */
 
 	/* otherwise forward the packet to all other interfaces*/
-	struct sr_rt* rt = sr->routing_table;
-
 	/* iterate through all entries in routing table and forward packet to matching IP */
-	while (rt != NULL) {
-		if (rt->dest.s_addr == (in_addr_t)destIP) {
-			/* If we found a match, forward the packet along that interface */
-			fprintf(stderr,"destination in routing table: ");
-			print_addr_ip_int(rt->dest.s_addr);
 
-			/* Check if MAC address of next-hop IP is in our cache,
-			 * if it is we alter the dest eth addr and send
-			 * if not, add this to the arp req queue and move on with our lives*/
+	struct sr_rt* rt = prefix_match_ip(sr, destIP);
 
-			struct sr_arpentry * entry = sr_arpcache_lookup(&(sr->cache),htonl(rt->dest.s_addr));
-			if (entry == 0) {
-				/*appending to queue, arpcache will handle changing the dest MAC addr of the packet*/
-				sr_arpcache_queuereq(&(sr->cache),rt->dest.s_addr, packet, len, rt->interface);
-				printf("not in cache, sending ARP request\n");
-				sr_arpcache_sweepreqs(sr);
-				return;
-			}
-			printf("\tIP found in ARPcache, forwarding packet\n");
-			/* if it is in the arp cache, then update src and dest MAC and forward the packet*/
-			sr_ethernet_hdr_t* eth_header = (sr_ethernet_hdr_t*)packet;
-			memcpy(eth_header->ether_dhost,entry->mac,ETHER_ADDR_LEN);
-			/*Finding MAC of that interface*/
-			struct sr_if* ifaceList = sr->if_list;
-			while (ifaceList != NULL) {
-				if (strcmp(ifaceList->name,rt->interface)==0) {
-					memcpy(eth_header->ether_shost,ifaceList->addr,ETHER_ADDR_LEN);
-				}
-				ifaceList = ifaceList->next;
-			}
-			/* once packet is properly changed, send it */
-			sr_send_packet(sr, packet, len, rt->interface);
-			/*printf("~~~~-------------------sent packet with request\n\n");*/
+	if (rt != NULL) {
+		/* If we found a match, forward the packet along that interface */
+		/*fprintf(stderr,"destination in routing table: ");
+		print_addr_ip_int(rt->dest.s_addr);*/
+
+		/* Check if MAC address of next-hop IP is in our cache,
+		 * if it is we alter the dest eth addr and send
+		 * if not, add this to the arp req queue and move on with our lives*/
+
+		struct sr_arpentry * entry = sr_arpcache_lookup(&(sr->cache),htonl(rt->dest.s_addr));
+		if (entry == 0) {
+			/*appending to queue, arpcache will handle changing the dest MAC addr of the packet*/
+			sr_arpcache_queuereq(&(sr->cache),rt->dest.s_addr, packet, len, rt->interface);
+			printf("not in cache, sending ARP request\n");
+			sr_arpcache_sweepreqs(sr);
 			return;
 		}
-		rt = rt->next;
+
+		/*printf("\tIP found in ARPcache, forwarding packet\n");*/
+		/* if it is in the arp cache, then update src and dest MAC and forward the packet*/
+		sr_ethernet_hdr_t* eth_header = (sr_ethernet_hdr_t*)packet;
+		memcpy(eth_header->ether_dhost,entry->mac,ETHER_ADDR_LEN);
+		/*Finding MAC of that interface*/
+		struct sr_if* ifaceList = sr->if_list;
+		while (ifaceList != NULL) {
+			if (strcmp(ifaceList->name,rt->interface)==0) {
+				memcpy(eth_header->ether_shost,ifaceList->addr,ETHER_ADDR_LEN);
+			}
+			ifaceList = ifaceList->next;
+		}
+		/* once packet is properly changed, send it */
+		sr_send_packet(sr, packet, len, rt->interface);
+		/*printf("~~~~-------------------sent packet with request\n\n");*/
+		return;
 	}
+
 	printf("Miss in routing table\n");
 
 	send_ICMP_message(sr, interface, packet, len, srcIP, eth_hdr->ether_shost,3,0);

@@ -7,10 +7,11 @@
 #include "sr_router.h"
 
 
-uint32_t prefix_match_ip(struct sr_instance* sr, uint32_t targetIP) {
+struct sr_rt* prefix_match_ip(struct sr_instance* sr, uint32_t targetIP) {
 	uint32_t best_match_ip = 0;
 	uint32_t best_match_mask = 0;
 	struct sr_rt* entry = sr->routing_table;
+	struct sr_rt* best_matched_entry = NULL;
 
 	/* for each entry in routing table, cross-check masked entry IP with masked target IP */
 	while (entry) {
@@ -21,13 +22,14 @@ uint32_t prefix_match_ip(struct sr_instance* sr, uint32_t targetIP) {
 				/* if we find a longer match, then update the best match. */
 				best_match_ip = next_hop_IP;
 				best_match_mask = entry_mask;
+				best_matched_entry = entry;
 			}
 		}
 
 		entry = entry->next;
 	}
 
-	return best_match_ip;
+	return best_matched_entry;
 }
 
 uint16_t cksum (const void *_data, int len) {

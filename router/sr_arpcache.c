@@ -18,11 +18,11 @@ void send_ICMP_message(struct sr_instance *sr, const char* iface, uint8_t* inbou
 {
 
 	/*malloc uint8_t buf of desired length*/
-	printf("SENDING ICMP MESSAGE ---------------------------------------------------\n");
+	/*printf("SENDING ICMP MESSAGE ---------------------------------------------------\n");*/
 	sr_ip_hdr_t* incoming_ip_hdr = (sr_ip_hdr_t*)(inbound_packet + 14);
 
 	uint32_t icmp_len = sizeof(sr_icmp_hdr_t)+4;
-	if (type == 3) {
+	if (type == 3 || type == 11) {
 		icmp_len = sizeof(sr_icmp_t3_hdr_t);
 	}
 	if (type == 0) {
@@ -82,7 +82,7 @@ void send_ICMP_message(struct sr_instance *sr, const char* iface, uint8_t* inbou
 
 
 	/*copy the buffer from ipv4 packet into ICMP data*/
-	if (type == 3) {
+	if (type == 3 || type == 11) {
 		uint8_t* icmp_data = icmp_buf + 8;
 		memcpy(icmp_data, (inbound_packet+sizeof(sr_ethernet_hdr_t)), icmp_len - 8); /*copies the IPv4 header + first 8 bytes of data*/
 
@@ -145,7 +145,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 	/*entry was null, resending ARP req*/
 	if (difftime(now, req->sent) > 1.0) {
 		if (req->times_sent >= 5) {
-			printf("DESTROYING ARP REQ B/C TIMEOUT\n");
+			/*printf("DESTROYING ARP REQ B/C TIMEOUT\n");*/
 
 			struct sr_packet* packet = req->packets;
 			/*send icmp host unreachable to all packets waiting on this req*/

@@ -27,6 +27,7 @@
 
 #ifndef SR_UTILS_H
 #define SR_UTILS_H
+#include "sr_rt.h"
 
 uint16_t cksum(const void *_data, int len);
 
@@ -46,5 +47,6 @@ void print_hdr_arp(uint8_t *buf);
 void print_hdrs(uint8_t *buf, uint32_t length);
 
 int mac_comp(uint8_t* a, uint8_t* b);
+struct sr_rt* prefix_match_ip(struct sr_instance* sr, uint32_t targetIP);
 
 #endif /* -- SR_UTILS_H -- */
