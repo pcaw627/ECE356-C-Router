@@ -12,6 +12,73 @@
 #include "sr_protocol.h"
 #include "sr_utils.h"
 
+/*TODO: when passing inbound_packet, ensure it is only the IP section and that Len is only the len of Ip section*/
+void send_ICMP_message(struct sr_instance *sr, const char* iface, uint8_t* inbound_packet,
+						uint32_t inbound_packet_len, uint32_t destIP, uint8_t* destMAC, uint8_t type, uint8_t code)
+{
+
+	/*malloc uint8_t buf of desired length*/
+
+
+	uint32_t icmp_len = inbound_packet_len + 8;
+	uint32_t len = icmp_len + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t);
+	uint8_t* buf = (uint8_t*)malloc(icmp_len + len); /*make out response buffer with proper length*/
+
+	/*find the iface we're sending out on*/
+	struct sr_if* icmp_iface = sr->if_list;
+	while (icmp_iface) {
+		if (strcmp(icmp_iface->name, iface) == 0) {
+			break;
+		}
+		icmp_iface = icmp_iface->next;
+	}
+
+	/*generate the ethernet header and IP header*/
+	sr_ethernet_hdr_t* eth_hdr = (sr_ethernet_hdr_t*)buf;
+	memcpy(eth_hdr->ether_dhost,destMAC,6);
+	memcpy(eth_hdr->ether_shost,icmp_iface->addr,6);
+	eth_hdr->ether_type = ethertype_ip;
+
+	sr_ip_hdr_t* ip_hdr = buf + sizeof(sr_ethernet_hdr_t);
+	ip_hdr->ip_hl = 20;
+	ip_hdr->ip_v = 4;
+	ip_hdr->ip_tos = 4;
+	ip_hdr->ip_len = icmp_len + 20;
+	ip_hdr->ip_id = 0;
+	ip_hdr->ip_off = 0;
+	ip_hdr->ip_ttl = 64;
+	ip_hdr->ip_p = ip_protocol_icmp;
+	ip_hdr->ip_sum = 0;
+	ip_hdr->ip_src = icmp_iface->ip; /*TODO: check if need nthonl*/
+	ip_hdr->ip_dst = destIP;
+
+	/*recalc ipv4 cksum*/
+	int ip_cksum = cksum(ip_hdr, 20);
+	ip_hdr->ip_sum = ip_cksum;
+
+	/*generate the ICMP header and data*/
+	uint8_t* icmp_buf = buf + sizeof(sr_ethernet_hdr_t);
+
+	/*copy the appropriate header data*/
+	*(icmp_buf) = type;
+	*(icmp_buf+1) = code;
+	int i = 0;
+	for (i = 2; i <8; i++) { /*zero cksum and 4 padding header bytes*/
+		icmp_buf[i] = 0;
+	}
+	/*copy the buffer from ipv4 packet into ICMP data*/
+	uint8_t* icmp_data = icmp_buf + 8;
+	memcpy(icmp_data, inbound_packet, inbound_packet_len);
+
+	/*calculate the correct checksum and send packet away*/
+	uint16_t icmp_cksum = cksum(icmp_buf, icmp_len);
+	memcpy((icmp_buf+2),&(icmp_cksum),2);
+
+	/*send the full ethernet frame*/
+	sr_send_packet(sr, buf, len, iface);
+
+
+}
 
 
 void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {

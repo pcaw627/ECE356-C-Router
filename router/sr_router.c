@@ -197,8 +197,8 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 	uint32_t destIP = ipheader->ip_dst;
 	uint32_t srcIP = ipheader->ip_src;
 	uint16_t sent_cksum = ipheader->ip_sum;
-	uint16_t clearSum = 0x00;
-	memcpy(&(ipheader->ip_sum), &clearSum, sizeof(uint16_t)); /*clear out the cksum field before calcing it*/
+	uint16_t clear_sum = 0x00;
+	memcpy(&(ipheader->ip_sum), &clear_sum, sizeof(uint16_t)); /*clear out the cksum field before calcing it*/
 	int actual_cksum = cksum(packet+14, 20);
 	if (actual_cksum != sent_cksum) {
 		printf("failed: checksum invalid ");
@@ -210,7 +210,9 @@ void handleIPpacket(struct sr_instance* sr, char* interface, uint8_t* packet, un
 	printf("%d %d\n",actual_cksum, sent_cksum);*/
 
 	ipheader->ip_ttl = ipheader->ip_ttl-1;
-	ipheader->ip_sum = cksum(packet+14, len-14);
+	uint16_t new_cksum = cksum(packet+14, len-14);
+	ipheader->ip_sum = 0;
+	memcpy(&(ipheader->ip_sum),&(new_cksum),2);
 
 
 
@@ -342,6 +344,7 @@ void sr_handlepacket(struct sr_instance* sr,
 	/*print_addr_ip_int(dest_IP);
   print_addr_ip_int(src_IP);
   printf("ip addresses ^^");*/
+	printf("Packet ethertype: %hu\t", ethertype(packet));
 
 	/* classify ethernet frame data as ARP or IP */
 	if (ethertype(packet) == ethertype_arp) {
